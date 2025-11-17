@@ -1,0 +1,284 @@
+import pandas as pd
+import numpy as np
+from scipy import stats
+import matplotlib.pyplot as plt
+import requests
+from io import StringIO
+import warnings
+import os
+
+warnings.filterwarnings('ignore')
+
+# Step 1: Load mutual fund returns
+print("Loading mutual fund returns...")
+
+# Try different possible filenames
+possible_files = [
+    'mutual_fund_returns (1).csv',
+    'mutual_fund_returns.csv',
+    'mutual_fund_returns(1).csv'
+]
+
+fund_returns = None
+for filename in possible_files:
+    try:
+        fund_returns = pd.read_csv(filename)
+        print(f"Successfully loaded: {filename}")
+        break
+    except FileNotFoundError:
+        continue
+
+if fund_returns is None:
+    print("\nERROR: Could not find the CSV file.")
+    print("Please make sure the file is in the same directory as this script.")
+    print("\nYour current directory is:", os.getcwd())
+    print("\nFiles in current directory:")
+    import os
+
+    for file in os.listdir('.'):
+        if file.endswith('.csv'):
+            print(f"  - {file}")
+    exit(1)
+
+fund_returns['date'] = pd.to_datetime(fund_returns['date'])
+fund_returns.set_index('date', inplace=True)
+
+# Step 2: Download Fama-French factors
+print("Downloading Fama-French factors...")
+
+
+def download_ff_factors():
+    """Download FF3 factors and momentum from Kenneth French's website"""
+
+    # FF3 Factors
+    ff3_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/F-F_Research_Data_Factors_CSV.zip"
+
+    # Momentum Factor
+    mom_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/F-F_Momentum_Factor_CSV.zip"
+
+    try:
+        # Download and parse FF3
+        ff3_data = pd.read_csv(ff3_url, compression='zip', skiprows=3)
+        ff3_data = ff3_data[ff3_data.iloc[:, 0].str.match(r'^\d{6}$', na=False)]
+        ff3_data.columns = ['date', 'Mkt-RF', 'SMB', 'HML', 'RF']
+        ff3_data['date'] = pd.to_datetime(ff3_data['date'], format='%Y%m')
+        ff3_data = ff3_data.set_index('date')
+        ff3_data = ff3_data.apply(pd.to_numeric, errors='coerce')
+
+        # Download and parse Momentum
+        mom_data = pd.read_csv(mom_url, compression='zip', skiprows=13)
+        mom_data = mom_data[mom_data.iloc[:, 0].str.match(r'^\d{6}$', na=False)]
+        mom_data.columns = ['date', 'Mom']
+        mom_data['date'] = pd.to_datetime(mom_data['date'], format='%Y%m')
+        mom_data = mom_data.set_index('date')
+        mom_data = mom_data.apply(pd.to_numeric, errors='coerce')
+
+        # Merge
+        factors = ff3_data.join(mom_data, how='inner')
+        factors.columns = ['MktRF', 'SMB', 'HML', 'RF', 'UMD']
+
+        return factors
+
+    except Exception as e:
+        print(f"Error downloading factors: {e}")
+        print("Using simulated factor data for demonstration...")
+        return create_simulated_factors(fund_returns.index)
+
+
+def create_simulated_factors(dates):
+    """Create simulated factor returns for demonstration"""
+    np.random.seed(42)
+    n = len(dates)
+    factors = pd.DataFrame({
+        'MktRF': np.random.normal(0.5, 4.5, n),
+        'SMB': np.random.normal(0.1, 3.0, n),
+        'HML': np.random.normal(0.3, 3.0, n),
+        'UMD': np.random.normal(0.7, 4.0, n),
+        'RF': np.random.uniform(0.1, 0.4, n)
+    }, index=dates)
+    return factors
+
+
+# Get factors
+factors = download_ff_factors()
+
+# Step 3: Merge data and create excess returns
+print("Merging data and calculating excess returns...")
+
+# Align dates (use month-end convention)
+factors.index = factors.index + pd.offsets.MonthEnd(0)
+fund_returns.index = fund_returns.index + pd.offsets.MonthEnd(0)
+
+# Merge
+merged = fund_returns.join(factors, how='inner')
+
+# Step 4: Run regressions for each fund
+print("Running regressions for each fund...")
+
+results = []
+
+for fund_id in fund_returns.columns:
+    # Get returns and drop NaN
+    data = merged[[fund_id, 'MktRF', 'SMB', 'HML', 'UMD', 'RF']].dropna()
+
+    if len(data) < 24:  # Need at least 24 months
+        continue
+
+    # Calculate excess returns
+    data['ExcessReturn'] = data[fund_id] - data['RF']
+
+    # CAPM Regression
+    X_capm = data[['MktRF']]
+    X_capm = np.column_stack([np.ones(len(X_capm)), X_capm])
+    y = data['ExcessReturn']
+
+    # OLS estimation
+    beta_capm = np.linalg.lstsq(X_capm, y, rcond=None)[0]
+    residuals_capm = y - X_capm @ beta_capm
+    mse_capm = np.sum(residuals_capm ** 2) / (len(y) - 2)
+    se_capm = np.sqrt(mse_capm * np.linalg.inv(X_capm.T @ X_capm).diagonal())
+    t_stats_capm = beta_capm / se_capm
+
+    alpha_capm = beta_capm[0]
+    beta_mkt = beta_capm[1]
+    residual_std_capm = np.std(residuals_capm, ddof=2)
+
+    # FF3 Regression
+    X_ff3 = data[['MktRF', 'SMB', 'HML']]
+    X_ff3 = np.column_stack([np.ones(len(X_ff3)), X_ff3])
+
+    beta_ff3 = np.linalg.lstsq(X_ff3, y, rcond=None)[0]
+    residuals_ff3 = y - X_ff3 @ beta_ff3
+    mse_ff3 = np.sum(residuals_ff3 ** 2) / (len(y) - 4)
+    se_ff3 = np.sqrt(mse_ff3 * np.linalg.inv(X_ff3.T @ X_ff3).diagonal())
+    t_stats_ff3 = beta_ff3 / se_ff3
+
+    alpha_ff3 = beta_ff3[0]
+    beta_smb = beta_ff3[2]
+    beta_hml = beta_ff3[3]
+
+    # 4-Factor Regression
+    X_4f = data[['MktRF', 'SMB', 'HML', 'UMD']]
+    X_4f = np.column_stack([np.ones(len(X_4f)), X_4f])
+
+    beta_4f = np.linalg.lstsq(X_4f, y, rcond=None)[0]
+    residuals_4f = y - X_4f @ beta_4f
+    mse_4f = np.sum(residuals_4f ** 2) / (len(y) - 5)
+    se_4f = np.sqrt(mse_4f * np.linalg.inv(X_4f.T @ X_4f).diagonal())
+    t_stats_4f = beta_4f / se_4f
+
+    alpha_4f = beta_4f[0]
+    residual_std_4f = np.std(residuals_4f, ddof=5)
+
+    # Calculate performance metrics
+    mean_excess = y.mean()
+    std_excess = y.std()
+
+    # Annualize
+    alpha_capm_ann = alpha_capm * 12
+    alpha_ff3_ann = alpha_ff3 * 12
+    alpha_4f_ann = alpha_4f * 12
+
+    sharpe = (mean_excess * 12) / (std_excess * np.sqrt(12))
+    treynor = (mean_excess * 12) / beta_mkt
+    ir_capm = alpha_capm_ann / (residual_std_capm * np.sqrt(12))
+    ir_4f = alpha_4f_ann / (residual_std_4f * np.sqrt(12))
+
+    results.append({
+        'Fund_ID': fund_id,
+        'N_obs': len(data),
+        'Alpha_CAPM': alpha_capm_ann,
+        't_Alpha_CAPM': t_stats_capm[0],
+        'Alpha_FF3': alpha_ff3_ann,
+        't_Alpha_FF3': t_stats_ff3[0],
+        'Alpha_4F': alpha_4f_ann,
+        't_Alpha_4F': t_stats_4f[0],
+        'Beta_Market': beta_mkt,
+        'Beta_SMB': beta_smb,
+        'Beta_HML': beta_hml,
+        'Sharpe_Ratio': sharpe,
+        'Treynor_Ratio': treynor,
+        'IR_CAPM': ir_capm,
+        'IR_4F': ir_4f
+    })
+
+results_df = pd.DataFrame(results)
+
+# Step 5: Create summary table
+print("\n" + "=" * 80)
+print("PERFORMANCE SUMMARY TABLE")
+print("=" * 80)
+print(results_df.to_string(index=False))
+
+# Save to CSV
+results_df.to_csv('fund_performance_results.csv', index=False)
+print("\nResults saved to 'fund_performance_results.csv'")
+
+# Step 6: Create histograms
+print("\nGenerating histograms...")
+
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+# CAPM Alpha histogram
+axes[0].hist(results_df['Alpha_CAPM'], bins=20, color='steelblue', edgecolor='black', alpha=0.7)
+axes[0].axvline(0, color='red', linestyle='--', linewidth=2, label='Zero Alpha')
+axes[0].set_xlabel('CAPM Alpha (% per year)', fontsize=12)
+axes[0].set_ylabel('Frequency', fontsize=12)
+axes[0].set_title('Distribution of CAPM Alphas', fontsize=14, fontweight='bold')
+axes[0].legend()
+axes[0].grid(alpha=0.3)
+
+# 4-Factor Alpha histogram
+axes[1].hist(results_df['Alpha_4F'], bins=20, color='seagreen', edgecolor='black', alpha=0.7)
+axes[1].axvline(0, color='red', linestyle='--', linewidth=2, label='Zero Alpha')
+axes[1].set_xlabel('4-Factor Alpha (% per year)', fontsize=12)
+axes[1].set_ylabel('Frequency', fontsize=12)
+axes[1].set_title('Distribution of 4-Factor Alphas', fontsize=14, fontweight='bold')
+axes[1].legend()
+axes[1].grid(alpha=0.3)
+
+plt.tight_layout()
+plt.savefig('alpha_distributions.png', dpi=300, bbox_inches='tight')
+print("Histograms saved to 'alpha_distributions.png'")
+
+# Step 7: Significance analysis
+print("\n" + "=" * 80)
+print("SIGNIFICANCE ANALYSIS")
+print("=" * 80)
+
+significant_capm = (np.abs(results_df['t_Alpha_CAPM']) > 1.96).sum()
+total_funds = len(results_df)
+expected_significant = total_funds * 0.05
+
+print(f"Total funds analyzed: {total_funds}")
+print(f"Significant CAPM alphas (5% level): {significant_capm} ({significant_capm / total_funds * 100:.1f}%)")
+print(f"Expected by chance: {expected_significant:.1f} ({5:.0f}%)")
+print(f"\nInterpretation:")
+if significant_capm > expected_significant * 1.5:
+    print("The number of significant alphas exceeds what we'd expect by chance,")
+    print("suggesting some funds may have genuine skill in generating abnormal returns.")
+else:
+    print("The number of significant alphas is close to what we'd expect by chance,")
+    print("providing little evidence of systematic managerial skill beyond luck.")
+
+# Step 8: Investment styles
+print("\n" + "=" * 80)
+print("INVESTMENT STYLE IDENTIFICATION")
+print("=" * 80)
+
+print("\nTop 5 Value Funds (High HML Beta):")
+value_funds = results_df.nlargest(5, 'Beta_HML')[['Fund_ID', 'Beta_HML', 'Alpha_4F']]
+print(value_funds.to_string(index=False))
+print("\nJustification: These funds have the highest HML factor loadings,")
+print("indicating strong tilts toward value stocks (high book-to-market ratios).")
+
+print("\n" + "-" * 80)
+print("\nTop 5 Small-Cap Funds (High SMB Beta):")
+smallcap_funds = results_df.nlargest(5, 'Beta_SMB')[['Fund_ID', 'Beta_SMB', 'Alpha_4F']]
+print(smallcap_funds.to_string(index=False))
+print("\nJustification: These funds have the highest SMB factor loadings,")
+print("indicating strong preferences for small-capitalization stocks.")
+
+print("\n" + "=" * 80)
+print("ANALYSIS COMPLETE!")
+print("=" * 80)
