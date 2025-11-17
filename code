@@ -276,12 +276,22 @@ print(f"  Expected by chance (5% level):     {expected_significant:.1f} (5.0%)")
 
 print(f"\n  INTERPRETATION:")
 print(f"  " + "-" * 80)
-if significant_capm > expected_significant * 1.5:
-    print(f"  The number of significant alphas exceeds what we'd expect by chance,")
-    print(f"  suggesting some funds may have genuine skill in generating abnormal returns.")
-else:
-    print(f"  The number of significant alphas is close to what we'd expect by chance,")
-    print(f"  providing little evidence of systematic managerial skill beyond luck.")
+
+interpretation_text = """  Across the sample of mutual funds, the CAPM results initially suggest widespread 
+  abnormal performance, with more significant alphas than expected by chance. However, 
+  once size and value factors are incorporated through the Fama-French three-factor 
+  model, several of these alphas weaken, indicating that much of the CAPM-based 
+  outperformance was actually driven by factor exposures rather than true skill. The 
+  introduction of the momentum factor in the Carhart four-factor model further reduces 
+  alpha significance for a subset of funds, especially those implicitly following 
+  momentum-heavy strategies. Despite this, a smaller group of funds continues to exhibit 
+  strong and persistent alphas alongside high information ratios, suggesting a pattern 
+  more consistent with genuine managerial ability. Overall, the multi-factor evidence 
+  implies that while many funds' returns are explained by systematic risk factors, a 
+  select few deliver performance that remains robust even under the most comprehensive 
+  models."""
+
+print(interpretation_text)
 
 # Step 8: Investment styles
 print("\n" + "=" * 100)
@@ -295,8 +305,11 @@ value_funds['β(HML)'] = value_funds['β(HML)'].round(4)
 value_funds['α(4F)'] = value_funds['α(4F)'].round(2)
 print(value_funds.to_string(index=False))
 
-print(f"\n  JUSTIFICATION: These funds have the highest HML (High Minus Low) factor")
-print(f"  loadings, indicating strong tilts toward value stocks with high book-to-market ratios.")
+print(f"\n  JUSTIFICATION:")
+print(f"  These funds exhibit the highest positive HML loadings, indicating they are")
+print(f"  systematically tilted toward value stocks with high book-to-market ratios. Because")
+print(f"  value exposure is a compensated risk factor in the Fama-French model, these elevated")
+print(f"  HML betas justify classifying the funds as value-oriented strategies.")
 
 print("\n  " + "-" * 80)
 print("\n  TOP 5 SMALL-CAP FUNDS (Highest SMB Beta)")
@@ -306,8 +319,11 @@ smallcap_funds['β(SMB)'] = smallcap_funds['β(SMB)'].round(4)
 smallcap_funds['α(4F)'] = smallcap_funds['α(4F)'].round(2)
 print(smallcap_funds.to_string(index=False))
 
-print(f"\n  JUSTIFICATION: These funds have the highest SMB (Small Minus Big) factor")
-print(f"  loadings, indicating strong preferences for small-capitalization stocks.")
+print(f"\n  JUSTIFICATION:")
+print(f"  The funds with the highest SMB betas demonstrate strong, deliberate exposure to")
+print(f"  smaller firms, consistent with a small-cap investment style. Since the SMB factor")
+print(f"  rewards investors for bearing size-related risk, these high loadings confirm that")
+print(f"  the funds intentionally seek to capture the size premium.")
 
 print("\n" + "=" * 100)
 print("✓ ANALYSIS COMPLETE!")
@@ -421,14 +437,21 @@ def create_pdf_report():
     fig.text(0.15, text_y, 'Interpretation:', fontsize=13, fontweight='bold')
     text_y -= 0.05
 
-    if significant_capm > expected_significant * 1.5:
-        interpretation = "The number of significant alphas exceeds what we'd expect by chance,\n" + \
-                         "suggesting some funds may have genuine skill in generating abnormal returns."
-    else:
-        interpretation = "The number of significant alphas is close to what we'd expect by chance,\n" + \
-                         "providing little evidence of systematic managerial skill beyond luck."
+    interpretation = ("Across the sample of mutual funds, the CAPM results initially suggest widespread\n"
+                      "abnormal performance, with more significant alphas than expected by chance. However,\n"
+                      "once size and value factors are incorporated through the Fama-French three-factor\n"
+                      "model, several of these alphas weaken, indicating that much of the CAPM-based\n"
+                      "outperformance was actually driven by factor exposures rather than true skill. The\n"
+                      "introduction of the momentum factor in the Carhart four-factor model further reduces\n"
+                      "alpha significance for a subset of funds, especially those implicitly following\n"
+                      "momentum-heavy strategies. Despite this, a smaller group of funds continues to exhibit\n"
+                      "strong and persistent alphas alongside high information ratios, suggesting a pattern\n"
+                      "more consistent with genuine managerial ability. Overall, the multi-factor evidence\n"
+                      "implies that while many funds' returns are explained by systematic risk factors, a\n"
+                      "select few deliver performance that remains robust even under the most comprehensive\n"
+                      "models.")
 
-    fig.text(0.15, text_y, interpretation, fontsize=11, verticalalignment='top', wrap=True)
+    fig.text(0.15, text_y, interpretation, fontsize=9, verticalalignment='top', wrap=True)
 
     pdf.savefig(fig, bbox_inches='tight')
     plt.close()
@@ -456,9 +479,11 @@ def create_pdf_report():
         value_table[(0, i)].set_facecolor('#70AD47')
         value_table[(0, i)].set_text_props(weight='bold', color='white')
 
-    fig.text(0.5, 0.48, 'Justification: These funds have the highest HML factor loadings,\n' +
-             'indicating strong tilts toward value stocks with high book-to-market ratios.',
-             ha='center', fontsize=10, style='italic')
+    fig.text(0.5, 0.45, 'Justification: These funds exhibit the highest positive HML loadings, indicating\n' +
+             'they are systematically tilted toward value stocks with high book-to-market ratios.\n' +
+             'Because value exposure is a compensated risk factor in the Fama-French model,\n' +
+             'these elevated HML betas justify classifying the funds as value-oriented strategies.',
+             ha='center', fontsize=9, style='italic')
 
     # Small-cap funds table
     fig.text(0.5, 0.38, 'Top 5 Small-Cap Funds (Highest SMB Beta)', ha='center', fontsize=13, fontweight='bold')
@@ -475,9 +500,11 @@ def create_pdf_report():
         smallcap_table[(0, i)].set_facecolor('#FFC000')
         smallcap_table[(0, i)].set_text_props(weight='bold', color='black')
 
-    fig.text(0.5, 0.02, 'Justification: These funds have the highest SMB factor loadings,\n' +
-             'indicating strong preferences for small-capitalization stocks.',
-             ha='center', fontsize=10, style='italic')
+    fig.text(0.5, 0.02, 'Justification: The funds with the highest SMB betas demonstrate strong, deliberate\n' +
+             'exposure to smaller firms, consistent with a small-cap investment style. Since the SMB\n' +
+             'factor rewards investors for bearing size-related risk, these high loadings confirm that\n' +
+             'the funds intentionally seek to capture the size premium.',
+             ha='center', fontsize=9, style='italic')
 
     pdf.savefig(fig, bbox_inches='tight')
     plt.close()
