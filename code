@@ -185,42 +185,49 @@ for fund_id in fund_returns.columns:
     ir_4f = alpha_4f_ann / (residual_std_4f * np.sqrt(12))
 
     results.append({
-        'Fund_ID': fund_id,
-        'N_obs': len(data),
-        'Alpha_CAPM': alpha_capm_ann,
-        't_Alpha_CAPM': t_stats_capm[0],
-        'Alpha_FF3': alpha_ff3_ann,
-        't_Alpha_FF3': t_stats_ff3[0],
-        'Alpha_4F': alpha_4f_ann,
-        't_Alpha_4F': t_stats_4f[0],
-        'Beta_Market': beta_mkt,
-        'Beta_SMB': beta_smb,
-        'Beta_HML': beta_hml,
-        'Sharpe_Ratio': sharpe,
-        'Treynor_Ratio': treynor,
-        'IR_CAPM': ir_capm,
-        'IR_4F': ir_4f
+        'Fund ID': fund_id,
+        'N': len(data),
+        'α(CAPM)': alpha_capm_ann,
+        't-stat': t_stats_capm[0],
+        'α(FF3)': alpha_ff3_ann,
+        't-stat.1': t_stats_ff3[0],
+        'α(4F)': alpha_4f_ann,
+        't-stat.2': t_stats_4f[0],
+        'β(Mkt)': beta_mkt,
+        'β(SMB)': beta_smb,
+        'β(HML)': beta_hml,
+        'SR': sharpe,
+        'TR': treynor,
+        'IR(CAPM)': ir_capm,
+        'IR(4F)': ir_4f
     })
 
 results_df = pd.DataFrame(results)
 
 # Step 5: Create summary table
-print("\n" + "=" * 80)
-print("PERFORMANCE SUMMARY TABLE")
-print("=" * 80)
+print("\n" + "=" * 100)
+print("FUND PERFORMANCE ANALYSIS - SUMMARY TABLE")
+print("=" * 100)
+
+# Format the display
+pd.options.display.float_format = '{:.4f}'.format
+pd.options.display.max_columns = None
+pd.options.display.width = None
+
 print(results_df.to_string(index=False))
+print("=" * 100)
 
 # Save to CSV
 results_df.to_csv('fund_performance_results.csv', index=False)
-print("\nResults saved to 'fund_performance_results.csv'")
+print("\n✓ Results saved to 'fund_performance_results.csv'")
 
 # Step 6: Create histograms
-print("\nGenerating histograms...")
+print("\n⏳ Generating histograms...")
 
 fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
 # CAPM Alpha histogram
-axes[0].hist(results_df['Alpha_CAPM'], bins=20, color='steelblue', edgecolor='black', alpha=0.7)
+axes[0].hist(results_df['α(CAPM)'], bins=20, color='steelblue', edgecolor='black', alpha=0.7)
 axes[0].axvline(0, color='red', linestyle='--', linewidth=2, label='Zero Alpha')
 axes[0].set_xlabel('CAPM Alpha (% per year)', fontsize=12)
 axes[0].set_ylabel('Frequency', fontsize=12)
@@ -229,7 +236,7 @@ axes[0].legend()
 axes[0].grid(alpha=0.3)
 
 # 4-Factor Alpha histogram
-axes[1].hist(results_df['Alpha_4F'], bins=20, color='seagreen', edgecolor='black', alpha=0.7)
+axes[1].hist(results_df['α(4F)'], bins=20, color='seagreen', edgecolor='black', alpha=0.7)
 axes[1].axvline(0, color='red', linestyle='--', linewidth=2, label='Zero Alpha')
 axes[1].set_xlabel('4-Factor Alpha (% per year)', fontsize=12)
 axes[1].set_ylabel('Frequency', fontsize=12)
@@ -239,46 +246,52 @@ axes[1].grid(alpha=0.3)
 
 plt.tight_layout()
 plt.savefig('alpha_distributions.png', dpi=300, bbox_inches='tight')
-print("Histograms saved to 'alpha_distributions.png'")
+print("✓ Histograms saved to 'alpha_distributions.png'")
 
 # Step 7: Significance analysis
-print("\n" + "=" * 80)
-print("SIGNIFICANCE ANALYSIS")
-print("=" * 80)
+print("\n" + "=" * 100)
+print("SIGNIFICANCE ANALYSIS (5% Level)")
+print("=" * 100)
 
-significant_capm = (np.abs(results_df['t_Alpha_CAPM']) > 1.96).sum()
+significant_capm = (np.abs(results_df['t-stat']) > 1.96).sum()
 total_funds = len(results_df)
 expected_significant = total_funds * 0.05
 
-print(f"Total funds analyzed: {total_funds}")
-print(f"Significant CAPM alphas (5% level): {significant_capm} ({significant_capm / total_funds * 100:.1f}%)")
-print(f"Expected by chance: {expected_significant:.1f} ({5:.0f}%)")
-print(f"\nInterpretation:")
+print(f"\n  Total funds analyzed:              {total_funds}")
+print(f"  Significant CAPM alphas:           {significant_capm} ({significant_capm / total_funds * 100:.1f}%)")
+print(f"  Expected by chance (5% level):     {expected_significant:.1f} (5.0%)")
+
+print(f"\n  INTERPRETATION:")
+print(f"  " + "-" * 80)
 if significant_capm > expected_significant * 1.5:
-    print("The number of significant alphas exceeds what we'd expect by chance,")
-    print("suggesting some funds may have genuine skill in generating abnormal returns.")
+    print(f"  The number of significant alphas exceeds what we'd expect by chance,")
+    print(f"  suggesting some funds may have genuine skill in generating abnormal returns.")
 else:
-    print("The number of significant alphas is close to what we'd expect by chance,")
-    print("providing little evidence of systematic managerial skill beyond luck.")
+    print(f"  The number of significant alphas is close to what we'd expect by chance,")
+    print(f"  providing little evidence of systematic managerial skill beyond luck.")
 
 # Step 8: Investment styles
-print("\n" + "=" * 80)
+print("\n" + "=" * 100)
 print("INVESTMENT STYLE IDENTIFICATION")
-print("=" * 80)
+print("=" * 100)
 
-print("\nTop 5 Value Funds (High HML Beta):")
-value_funds = results_df.nlargest(5, 'Beta_HML')[['Fund_ID', 'Beta_HML', 'Alpha_4F']]
-print(value_funds.to_string(index=False))
-print("\nJustification: These funds have the highest HML factor loadings,")
-print("indicating strong tilts toward value stocks (high book-to-market ratios).")
+print("\n  TOP 5 VALUE FUNDS (Highest HML Beta)")
+print("  " + "-" * 80)
+value_funds = results_df.nlargest(5, 'β(HML)')[['Fund ID', 'β(HML)', 'α(4F)']].round(4)
+for idx, row in value_funds.iterrows():
+    print(f"    {row['Fund ID']:>6}    HML β = {row['β(HML)']:>7.4f}    4F α = {row['α(4F)']:>7.2f}%")
+print(f"\n  JUSTIFICATION: These funds have the highest HML (High Minus Low) factor")
+print(f"  loadings, indicating strong tilts toward value stocks with high book-to-market ratios.")
 
-print("\n" + "-" * 80)
-print("\nTop 5 Small-Cap Funds (High SMB Beta):")
-smallcap_funds = results_df.nlargest(5, 'Beta_SMB')[['Fund_ID', 'Beta_SMB', 'Alpha_4F']]
-print(smallcap_funds.to_string(index=False))
-print("\nJustification: These funds have the highest SMB factor loadings,")
-print("indicating strong preferences for small-capitalization stocks.")
+print("\n  " + "-" * 80)
+print("\n  TOP 5 SMALL-CAP FUNDS (Highest SMB Beta)")
+print("  " + "-" * 80)
+smallcap_funds = results_df.nlargest(5, 'β(SMB)')[['Fund ID', 'β(SMB)', 'α(4F)']].round(4)
+for idx, row in smallcap_funds.iterrows():
+    print(f"    {row['Fund ID']:>6}    SMB β = {row['β(SMB)']:>7.4f}    4F α = {row['α(4F)']:>7.2f}%")
+print(f"\n  JUSTIFICATION: These funds have the highest SMB (Small Minus Big) factor")
+print(f"  loadings, indicating strong preferences for small-capitalization stocks.")
 
-print("\n" + "=" * 80)
-print("ANALYSIS COMPLETE!")
-print("=" * 80)
+print("\n" + "=" * 100)
+print("✓ ANALYSIS COMPLETE!")
+print("=" * 100)
