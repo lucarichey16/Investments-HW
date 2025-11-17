@@ -6,6 +6,7 @@ import requests
 from io import StringIO
 import warnings
 import os
+from matplotlib.backends.backend_pdf import PdfPages
 
 warnings.filterwarnings('ignore')
 
@@ -214,12 +215,24 @@ pd.options.display.float_format = '{:.4f}'.format
 pd.options.display.max_columns = None
 pd.options.display.width = None
 
-print(results_df.to_string(index=False))
-print("=" * 100)
+# Round for display
+display_df = results_df.copy()
+display_df['α(CAPM)'] = display_df['α(CAPM)'].round(2)
+display_df['t-stat'] = display_df['t-stat'].round(2)
+display_df['α(FF3)'] = display_df['α(FF3)'].round(2)
+display_df['t-stat.1'] = display_df['t-stat.1'].round(2)
+display_df['α(4F)'] = display_df['α(4F)'].round(2)
+display_df['t-stat.2'] = display_df['t-stat.2'].round(2)
+display_df['β(Mkt)'] = display_df['β(Mkt)'].round(3)
+display_df['β(SMB)'] = display_df['β(SMB)'].round(3)
+display_df['β(HML)'] = display_df['β(HML)'].round(3)
+display_df['SR'] = display_df['SR'].round(3)
+display_df['TR'] = display_df['TR'].round(2)
+display_df['IR(CAPM)'] = display_df['IR(CAPM)'].round(3)
+display_df['IR(4F)'] = display_df['IR(4F)'].round(3)
 
-# Save to CSV
-results_df.to_csv('fund_performance_results.csv', index=False)
-print("\n✓ Results saved to 'fund_performance_results.csv'")
+print(display_df.to_string(index=False))
+print("=" * 100)
 
 # Step 6: Create histograms
 print("\n⏳ Generating histograms...")
@@ -277,21 +290,205 @@ print("=" * 100)
 
 print("\n  TOP 5 VALUE FUNDS (Highest HML Beta)")
 print("  " + "-" * 80)
-value_funds = results_df.nlargest(5, 'β(HML)')[['Fund ID', 'β(HML)', 'α(4F)']].round(4)
-for idx, row in value_funds.iterrows():
-    print(f"    {row['Fund ID']:>6}    HML β = {row['β(HML)']:>7.4f}    4F α = {row['α(4F)']:>7.2f}%")
+value_funds = results_df.nlargest(5, 'β(HML)')[['Fund ID', 'β(HML)', 'α(4F)']].copy()
+value_funds['β(HML)'] = value_funds['β(HML)'].round(4)
+value_funds['α(4F)'] = value_funds['α(4F)'].round(2)
+print(value_funds.to_string(index=False))
+
 print(f"\n  JUSTIFICATION: These funds have the highest HML (High Minus Low) factor")
 print(f"  loadings, indicating strong tilts toward value stocks with high book-to-market ratios.")
 
 print("\n  " + "-" * 80)
 print("\n  TOP 5 SMALL-CAP FUNDS (Highest SMB Beta)")
 print("  " + "-" * 80)
-smallcap_funds = results_df.nlargest(5, 'β(SMB)')[['Fund ID', 'β(SMB)', 'α(4F)']].round(4)
-for idx, row in smallcap_funds.iterrows():
-    print(f"    {row['Fund ID']:>6}    SMB β = {row['β(SMB)']:>7.4f}    4F α = {row['α(4F)']:>7.2f}%")
+smallcap_funds = results_df.nlargest(5, 'β(SMB)')[['Fund ID', 'β(SMB)', 'α(4F)']].copy()
+smallcap_funds['β(SMB)'] = smallcap_funds['β(SMB)'].round(4)
+smallcap_funds['α(4F)'] = smallcap_funds['α(4F)'].round(2)
+print(smallcap_funds.to_string(index=False))
+
 print(f"\n  JUSTIFICATION: These funds have the highest SMB (Small Minus Big) factor")
 print(f"  loadings, indicating strong preferences for small-capitalization stocks.")
 
 print("\n" + "=" * 100)
 print("✓ ANALYSIS COMPLETE!")
 print("=" * 100)
+
+# Step 9: Generate PDF Report
+print("\n⏳ Generating PDF report...")
+
+
+def create_pdf_report():
+    pdf = PdfPages('fund_performance_report.pdf')
+
+    # Page 1: Summary Table (Part 1)
+    fig = plt.figure(figsize=(11, 8.5))
+    ax = fig.add_subplot(111)
+    ax.axis('tight')
+    ax.axis('off')
+
+    # Title
+    fig.text(0.5, 0.95, 'Mutual Fund Performance Analysis',
+             ha='center', fontsize=16, fontweight='bold')
+    fig.text(0.5, 0.92, f'Analysis of {len(results_df)} Mutual Funds',
+             ha='center', fontsize=12)
+
+    # Create table with first set of columns
+    table_data1 = display_df[['Fund ID', 'N', 'α(CAPM)', 't-stat', 'α(FF3)', 't-stat.1', 'α(4F)', 't-stat.2']].values
+    table1 = ax.table(cellText=table_data1,
+                      colLabels=['Fund ID', 'N', 'α(CAPM)', 't-stat', 'α(FF3)', 't-stat', 'α(4F)', 't-stat'],
+                      cellLoc='center', loc='center', bbox=[0.05, 0.1, 0.9, 0.75])
+    table1.auto_set_font_size(False)
+    table1.set_fontsize(8)
+    table1.scale(1, 1.5)
+
+    # Style header
+    for i in range(8):
+        table1[(0, i)].set_facecolor('#4472C4')
+        table1[(0, i)].set_text_props(weight='bold', color='white')
+
+    pdf.savefig(fig, bbox_inches='tight')
+    plt.close()
+
+    # Page 2: Summary Table (Part 2)
+    fig = plt.figure(figsize=(11, 8.5))
+    ax = fig.add_subplot(111)
+    ax.axis('tight')
+    ax.axis('off')
+
+    fig.text(0.5, 0.95, 'Mutual Fund Performance Analysis (Continued)',
+             ha='center', fontsize=16, fontweight='bold')
+
+    # Create table with second set of columns
+    table_data2 = display_df[['Fund ID', 'β(Mkt)', 'β(SMB)', 'β(HML)', 'SR', 'TR', 'IR(CAPM)', 'IR(4F)']].values
+    table2 = ax.table(cellText=table_data2,
+                      colLabels=['Fund ID', 'β(Mkt)', 'β(SMB)', 'β(HML)', 'SR', 'TR', 'IR(CAPM)', 'IR(4F)'],
+                      cellLoc='center', loc='center', bbox=[0.05, 0.1, 0.9, 0.75])
+    table2.auto_set_font_size(False)
+    table2.set_fontsize(8)
+    table2.scale(1, 1.5)
+
+    # Style header
+    for i in range(8):
+        table2[(0, i)].set_facecolor('#4472C4')
+        table2[(0, i)].set_text_props(weight='bold', color='white')
+
+    pdf.savefig(fig, bbox_inches='tight')
+    plt.close()
+
+    # Page 3: Histograms
+    fig, axes = plt.subplots(1, 2, figsize=(11, 6))
+
+    # CAPM Alpha histogram
+    axes[0].hist(results_df['α(CAPM)'], bins=20, color='steelblue', edgecolor='black', alpha=0.7)
+    axes[0].axvline(0, color='red', linestyle='--', linewidth=2, label='Zero Alpha')
+    axes[0].set_xlabel('CAPM Alpha (% per year)', fontsize=11)
+    axes[0].set_ylabel('Frequency', fontsize=11)
+    axes[0].set_title('Distribution of CAPM Alphas', fontsize=13, fontweight='bold')
+    axes[0].legend()
+    axes[0].grid(alpha=0.3)
+
+    # 4-Factor Alpha histogram
+    axes[1].hist(results_df['α(4F)'], bins=20, color='seagreen', edgecolor='black', alpha=0.7)
+    axes[1].axvline(0, color='red', linestyle='--', linewidth=2, label='Zero Alpha')
+    axes[1].set_xlabel('4-Factor Alpha (% per year)', fontsize=11)
+    axes[1].set_ylabel('Frequency', fontsize=11)
+    axes[1].set_title('Distribution of 4-Factor Alphas', fontsize=13, fontweight='bold')
+    axes[1].legend()
+    axes[1].grid(alpha=0.3)
+
+    plt.tight_layout()
+    pdf.savefig(fig, bbox_inches='tight')
+    plt.close()
+
+    # Page 4: Significance Analysis
+    fig = plt.figure(figsize=(11, 8.5))
+    ax = fig.add_subplot(111)
+    ax.axis('off')
+
+    fig.text(0.5, 0.90, 'Significance Analysis', ha='center', fontsize=16, fontweight='bold')
+
+    # Significance stats
+    text_y = 0.80
+    fig.text(0.15, text_y, f'Total Funds Analyzed: {total_funds}', fontsize=12)
+    text_y -= 0.05
+    fig.text(0.15, text_y,
+             f'Significant CAPM Alphas (5% level): {significant_capm} ({significant_capm / total_funds * 100:.1f}%)',
+             fontsize=12)
+    text_y -= 0.05
+    fig.text(0.15, text_y, f'Expected by Chance: {expected_significant:.1f} (5.0%)', fontsize=12)
+
+    text_y -= 0.08
+    fig.text(0.15, text_y, 'Interpretation:', fontsize=13, fontweight='bold')
+    text_y -= 0.05
+
+    if significant_capm > expected_significant * 1.5:
+        interpretation = "The number of significant alphas exceeds what we'd expect by chance,\n" + \
+                         "suggesting some funds may have genuine skill in generating abnormal returns."
+    else:
+        interpretation = "The number of significant alphas is close to what we'd expect by chance,\n" + \
+                         "providing little evidence of systematic managerial skill beyond luck."
+
+    fig.text(0.15, text_y, interpretation, fontsize=11, verticalalignment='top', wrap=True)
+
+    pdf.savefig(fig, bbox_inches='tight')
+    plt.close()
+
+    # Page 5: Investment Styles
+    fig = plt.figure(figsize=(11, 8.5))
+    ax = fig.add_subplot(111)
+    ax.axis('tight')
+    ax.axis('off')
+
+    fig.text(0.5, 0.90, 'Investment Style Identification', ha='center', fontsize=16, fontweight='bold')
+
+    # Value funds table
+    fig.text(0.5, 0.82, 'Top 5 Value Funds (Highest HML Beta)', ha='center', fontsize=13, fontweight='bold')
+
+    value_table_data = value_funds.values
+    value_table = ax.table(cellText=value_table_data,
+                           colLabels=['Fund ID', 'β(HML)', 'α(4F)'],
+                           cellLoc='center', loc='upper center', bbox=[0.25, 0.55, 0.5, 0.25])
+    value_table.auto_set_font_size(False)
+    value_table.set_fontsize(10)
+    value_table.scale(1, 2)
+
+    for i in range(3):
+        value_table[(0, i)].set_facecolor('#70AD47')
+        value_table[(0, i)].set_text_props(weight='bold', color='white')
+
+    fig.text(0.5, 0.48, 'Justification: These funds have the highest HML factor loadings,\n' +
+             'indicating strong tilts toward value stocks with high book-to-market ratios.',
+             ha='center', fontsize=10, style='italic')
+
+    # Small-cap funds table
+    fig.text(0.5, 0.38, 'Top 5 Small-Cap Funds (Highest SMB Beta)', ha='center', fontsize=13, fontweight='bold')
+
+    smallcap_table_data = smallcap_funds.values
+    smallcap_table = ax.table(cellText=smallcap_table_data,
+                              colLabels=['Fund ID', 'β(SMB)', 'α(4F)'],
+                              cellLoc='center', loc='lower center', bbox=[0.25, 0.05, 0.5, 0.25])
+    smallcap_table.auto_set_font_size(False)
+    smallcap_table.set_fontsize(10)
+    smallcap_table.scale(1, 2)
+
+    for i in range(3):
+        smallcap_table[(0, i)].set_facecolor('#FFC000')
+        smallcap_table[(0, i)].set_text_props(weight='bold', color='black')
+
+    fig.text(0.5, 0.02, 'Justification: These funds have the highest SMB factor loadings,\n' +
+             'indicating strong preferences for small-capitalization stocks.',
+             ha='center', fontsize=10, style='italic')
+
+    pdf.savefig(fig, bbox_inches='tight')
+    plt.close()
+
+    pdf.close()
+
+
+create_pdf_report()
+print("✓ PDF report generated: 'fund_performance_report.pdf'")
+
+print("\n📊 OUTPUT FILES:")
+print("  • fund_performance_report.pdf - Complete analysis report")
+print("  • alpha_distributions.png - Histogram visualizations")
+print("\n" + "=" * 100)
